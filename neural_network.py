@@ -1,4 +1,42 @@
 import numpy as np
+from urllib import request
+import gzip
+import os
+
+def load_mnist():
+    base_url = "https://storage.googleapis.com/cvdf-datasets/mnist/"
+    files = {
+        "train_images": "train-images-idx3-ubyte.gz",
+        "train_labels": "train-labels-idx1-ubyte.gz",
+        "test_images":  "t10k-images-idx3-ubyte.gz",
+        "test_labels":  "t10k-labels-idx1-ubyte.gz"
+    }
+
+    os.makedirs("data", exist_ok=True)
+
+    for key, filename in files.items():
+        path = f"data/{filename}"
+        if not os.path.exists(path):
+            print(f"Downloading {filename}...")
+            request.urlretrieve(base_url + filename, path)
+
+    # Charger images train
+    with gzip.open("data/train-images-idx3-ubyte.gz", "rb") as f:
+        train_images = np.frombuffer(f.read(), np.uint8, offset=16).reshape(-1, 784)
+
+    # Charger labels train
+    with gzip.open("data/train-labels-idx1-ubyte.gz", "rb") as f:
+        train_labels = np.frombuffer(f.read(), np.uint8, offset=8)
+
+    # Charger images test
+    with gzip.open("data/t10k-images-idx3-ubyte.gz", "rb") as f:
+        test_images = np.frombuffer(f.read(), np.uint8, offset=16).reshape(-1, 784)
+
+    # Charger labels test
+    with gzip.open("data/t10k-labels-idx1-ubyte.gz", "rb") as f:
+        test_labels = np.frombuffer(f.read(), np.uint8, offset=8)
+
+    return train_images, train_labels, test_images, test_labels
 
 def sigmoid(z):
   output= 1/(1+np.exp(-z))
@@ -7,6 +45,22 @@ def sigmoid(z):
 def relu(z):
   output = np.maximum(0,z)
   return output
+
+def softmax(z):
+  z=np.array(z)
+  z = z - np.max(z)
+  return np.exp(z)/np.sum(np.exp(z))
+
+def cross_entropy_loss(y_true,y_pred):
+  y_pred = np.clip(y_pred, 1e-15, 1 - 1e-15)
+  loss=-np.sum(y_true * np.log(y_pred))
+  return loss
+
+def one_hot(labels, n_classes=10):
+    n = len(labels)
+    one_hot_labels = np.zeros((n, n_classes))
+    one_hot_labels[np.arange(n), labels] = 1
+    return one_hot_labels
 
 def mse_loss(y_true,y_pred):
   y_pred=np.array(y_pred)
@@ -25,7 +79,7 @@ def forward(x,w1,b1,w2,b2):
   d1=dense_layer(x,w1,b1)
   a1=relu(d1)
   d2=dense_layer(a1,w2,b2)
-  a2=sigmoid(d2)
+  a2=softmax(d2)
   return d1,a1,d2,a2
 
 def backward(x,w1,b1,w2,b2,a1,a2,z1,z2,y_true):
@@ -50,6 +104,69 @@ def train(x,y_true,w1,b1,w2,b2,learning_rate,epochs):
     b2 -= learning_rate * db2
     if epoch % 100 == 0:
       print(f"Epoch: {epoch}, Loss: {loss}")
+
+def train_mnist(train_images, train_labels_oh, W1, b1, W2, b2, 
+                learning_rate=0.01, epochs=10, batch_size=32):
+    
+    n = len(train_images)
+    
+    for epoch in range(epochs):
+
+        indices = np.random.permutation(n)
+        X_shuffled = train_images[indices]
+        Y_shuffled = train_labels_oh[indices]
+        
+        epoch_loss = 0
+        
+        for i in range(0, n, batch_size):
+
+            X_batch = X_shuffled[i:i+batch_size]
+            Y_batch = Y_shuffled[i:i+batch_size]
+            
+            dW1_total = np.zeros_like(W1)
+            db1_total = np.zeros_like(b1)
+            dW2_total = np.zeros_like(W2)
+            db2_total = np.zeros_like(b2)
+            
+            for j in range(len(X_batch)):
+                x = X_batch[j]
+                y = Y_batch[j]
+                
+                z1, a1, z2, a2 = forward(x, W1, b1, W2, b2)
+                
+                epoch_loss += cross_entropy_loss(y, a2)
+                
+                dw1, db1_grad, dw2, db2_grad = backward(x, W1, b1, W2, b2, a1, a2, z1, z2, y)
+                
+                dW1_total += dw1
+                db1_total += db1_grad
+                dW2_total += dw2
+                db2_total += db2_grad 
+
+            dW1_total /= len(X_batch)
+            db1_total /= len(X_batch)
+            dW2_total /= len(X_batch)
+            db2_total /= len(X_batch)
+            
+            W1 -= learning_rate * dW1_total
+            b1 -= learning_rate * db1_total
+            W2 -= learning_rate * dW2_total
+            b2 -= learning_rate * db2_total
+        
+        epoch_loss /= n
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
+    
+    return W1, b1, W2, b2
+
+def accuracy(images, labels, W1, b1, W2, b2):
+    correct = 0
+    for i in range(len(images)):
+        _, _, _, a2 = forward(images[i], W1, b1, W2, b2)
+        pred = np.argmax(a2)     
+        true = np.argmax(labels[i])  
+        if pred == true:
+            correct += 1
+    return correct / len(images)
 
 if __name__ == "__main__":
   #test the mse_loss function
@@ -91,3 +208,53 @@ if __name__ == "__main__":
   b2     = np.zeros(1)
 
   train(x, y_true, W1, b1, W2, b2, learning_rate=0.01, epochs=1000)
+  #softmax test
+  print("Testing softmax function:")
+  z = np.array([2.0, 1.0, 0.1])
+  print(softmax(z))  
+  print(np.sum(softmax(z)))
+  print(softmax(np.array([2.0, 1.0, 0.1]))) 
+  print(softmax(np.array([1000.0, 2000.0, 3000.0])))
+  #cross_entropy_loss test
+  print("Testing cross_entropy_loss function:")
+  y_true = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
+  y_pred = np.array([0.01, 0.01, 0.9, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.02])
+  print(cross_entropy_loss(y_true, y_pred)) 
+#test the load_mnist 
+  print("Testing load_mnist:")
+  train_images, train_labels, test_images, test_labels = load_mnist()
+  print(f"Train images shape: {train_images.shape}")
+  print(f"Train labels shape: {train_labels.shape}")
+  print(f"Test images shape:  {test_images.shape}")
+  print(f"Test labels shape:  {test_labels.shape}")
+
+train_images = train_images / 255.0
+test_images  = test_images / 255.0
+
+train_labels_oh = one_hot(train_labels)
+test_labels_oh  = one_hot(test_labels)
+
+print(train_images.max())       
+print(train_images.min())       
+print(train_labels_oh[0])       
+print(train_labels_oh.shape)    
+# Initialize weights and biases 
+np.random.seed(42)
+W1 = np.random.randn(128, 784) * 0.01
+b1 = np.zeros(128)
+W2 = np.random.randn(10, 128) * 0.01
+b2 = np.zeros(10)
+# Test one image
+x = train_images[0]
+z1, a1, z2, a2 = forward(x, W1, b1, W2, b2)
+print(f"a2 shape: {a2.shape}")       
+print(f"a2 sum: {np.sum(a2):.4f}")  
+print(f"a2: {a2}")
+print("Training on MNIST:")
+train_mnist(train_images, train_labels_oh, W1, b1, W2, b2, learning_rate=0.001, epochs=20, batch_size=32)
+
+print("Evaluating on test set:")
+train_acc = accuracy(train_images, train_labels_oh, W1, b1, W2, b2)
+test_acc  = accuracy(test_images, test_labels_oh, W1, b1, W2, b2)
+print(f"Train accuracy: {train_acc:.4f}")
+print(f"Test accuracy:  {test_acc:.4f}")
