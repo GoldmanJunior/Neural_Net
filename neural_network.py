@@ -79,33 +79,46 @@ def forward(x,w1,b1,w2,b2):
   d1=dense_layer(x,w1,b1)
   a1=relu(d1)
   d2=dense_layer(a1,w2,b2)
-  a2=softmax(d2)
+  a2=relu(d2)
   return d1,a1,d2,a2
 
-def backward(x,w1,b1,w2,b2,a1,a2,z1,z2,y_true):
-  dL_da2=2 *(a2-y_true)
-  sigmoid_prime_z2 = a2 * (1 - a2)
-  delta2=dL_da2 * sigmoid_prime_z2
-  dW2 = np.dot(delta2.reshape(-1, 1), a1.reshape(1, -1))
-  db2=delta2
-  delta1=np.dot(delta2, w2) * (z1 > 0)
-  dw1=np.dot(delta1.reshape(-1, 1), x.reshape(1, -1))
-  db1=delta1
-  return dw1, db1, dW2, db2
+def forward1(x,w1,b1,w2,b2,w3,b3):
+  d1=dense_layer(x,w1,b1)
+  a1=relu(d1)
+  d2=dense_layer(a1,w2,b2)
+  a2=relu(d2)
+  d3=dense_layer(a2,w3,b3)
+  a3=softmax(d3)
+  return d1,a1,d2,a2,d3,a3
+
+def backward(x, y_true, W1, b1, W2, b2, W3, b3, a1, a2, a3, z1, z2, z3):
+    delta3 = a3 - y_true
+    dW3 = np.dot(delta3.reshape(-1, 1), a2.reshape(1, -1))
+    db3 = delta3
+    delta2 = np.dot(delta3, W3) * (z2 > 0)
+    dW2 = np.dot(delta2.reshape(-1, 1), a1.reshape(1, -1))
+    db2 = delta2
+    delta1 = np.dot(delta2, W2) * (z1 > 0)
+    dW1 = np.dot(delta1.reshape(-1, 1), x.reshape(1, -1))
+    db1 = delta1
+
+    return dW1, db1, dW2, db2, dW3, db3
 
 def train(x,y_true,w1,b1,w2,b2,learning_rate,epochs):
   for epoch in range(epochs):
     z1,a1,z2,a2=forward(x,w1,b1,w2,b2)
     loss = mse_loss(y_true, a2)
-    dw1,db1,dw2,db2=backward(x,w1,b1,w2,b2,a1,a2,z1,z2,y_true)
+    dw1,db1,dw2,db2,dw3,db3=backward(x,w1,b1,w2,b2,w3,b3,a1,a2,z1,z2,z3)
     w1 -= learning_rate * dw1
     b1 -= learning_rate * db1
     w2 -= learning_rate * dw2
     b2 -= learning_rate * db2
+    w3 -= learning_rate * dw3
+    b3 -= learning_rate * db3
     if epoch % 100 == 0:
       print(f"Epoch: {epoch}, Loss: {loss}")
 
-def train_mnist(train_images, train_labels_oh, W1, b1, W2, b2, 
+def train_mnist(train_images, train_labels_oh, W1, b1, W2, b2,W3, b3, 
                 learning_rate=0.01, epochs=10, batch_size=32):
     
     n = len(train_images)
@@ -127,42 +140,50 @@ def train_mnist(train_images, train_labels_oh, W1, b1, W2, b2,
             db1_total = np.zeros_like(b1)
             dW2_total = np.zeros_like(W2)
             db2_total = np.zeros_like(b2)
+            dW3_total = np.zeros_like(W3)
+            db3_total = np.zeros_like(b3)
             
             for j in range(len(X_batch)):
                 x = X_batch[j]
                 y = Y_batch[j]
                 
-                z1, a1, z2, a2 = forward(x, W1, b1, W2, b2)
+                z1, a1, z2, a2, z3, a3 = forward1(x, W1, b1, W2, b2, W3, b3)
                 
-                epoch_loss += cross_entropy_loss(y, a2)
+                epoch_loss += cross_entropy_loss(y, a3)
                 
-                dw1, db1_grad, dw2, db2_grad = backward(x, W1, b1, W2, b2, a1, a2, z1, z2, y)
+                dw1, db1_grad, dw2, db2_grad, dw3, db3_grad = backward(x, y, W1, b1, W2, b2, W3, b3, a1, a2, a3, z1, z2, z3)
                 
                 dW1_total += dw1
                 db1_total += db1_grad
                 dW2_total += dw2
                 db2_total += db2_grad 
+                dW3_total += dw3
+                db3_total += db3_grad
 
             dW1_total /= len(X_batch)
             db1_total /= len(X_batch)
             dW2_total /= len(X_batch)
             db2_total /= len(X_batch)
-            
+            dW3_total /= len(X_batch)
+            db3_total /= len(X_batch)
+
             W1 -= learning_rate * dW1_total
             b1 -= learning_rate * db1_total
             W2 -= learning_rate * dW2_total
             b2 -= learning_rate * db2_total
-        
+            W3 -= learning_rate * dW3_total
+            b3 -= learning_rate * db3_total
+
         epoch_loss /= n
         print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
     
-    return W1, b1, W2, b2
+    return W1, b1, W2, b2, W3, b3
 
-def accuracy(images, labels, W1, b1, W2, b2):
+def accuracy(images, labels, W1, b1, W2, b2, W3, b3):
     correct = 0
     for i in range(len(images)):
-        _, _, _, a2 = forward(images[i], W1, b1, W2, b2)
-        pred = np.argmax(a2)     
+        _, _, _, _, _, a3 = forward1(images[i], W1, b1, W2, b2, W3, b3)
+        pred = np.argmax(a3)     
         true = np.argmax(labels[i])  
         if pred == true:
             correct += 1
@@ -194,9 +215,9 @@ if __name__ == "__main__":
   print(W2)
   b2 = np.zeros(1)
   print(forward(x, W1, b1, W2, b2))
-  print("Testing backward function:")
-  z1, a1, z2, a2 = forward(x, W1, b1, W2, b2)
-  print(backward(x, W1, b1, W2, b2, a1, a2, z1, z2, y_true=np.array([1.0])))
+  #print("Testing backward function:")
+  #z1, a1, z2, a2 = forward(x, W1, b1, W2, b2)
+  #print(backward(x, W1, b1, W2, b2, a1, a2, z1, z2, y_true=np.array([1.0])))
   #test the train function
   print("Testing train function:")
   np.random.seed(0)
@@ -207,7 +228,7 @@ if __name__ == "__main__":
   W2     = np.random.randn(1, 4)
   b2     = np.zeros(1)
 
-  train(x, y_true, W1, b1, W2, b2, learning_rate=0.01, epochs=1000)
+  #train(x, y_true, W1, b1, W2, b2, learning_rate=0.01, epochs=1000)
   #softmax test
   print("Testing softmax function:")
   z = np.array([2.0, 1.0, 0.1])
@@ -244,17 +265,47 @@ W1 = np.random.randn(128, 784) * 0.01
 b1 = np.zeros(128)
 W2 = np.random.randn(10, 128) * 0.01
 b2 = np.zeros(10)
+# text the forward1 function
+print("Testing forward1 function:")
+np.random.seed(42)
+W1 = np.random.randn(128, 784) * 0.01
+b1 = np.zeros(128)
+W2 = np.random.randn(64, 128) * 0.01
+b2 = np.zeros(64)
+W3 = np.random.randn(10, 64) * 0.01
+b3 = np.zeros(10)
+
+x = train_images[0]
+z1, a1, z2, a2, z3, a3 = forward1(x, W1, b1, W2, b2, W3, b3)
+print(f"a3 shape: {a3.shape}")       
+print(f"a3 sum: {np.sum(a3):.4f}")   
+
 # Test one image
 x = train_images[0]
-z1, a1, z2, a2 = forward(x, W1, b1, W2, b2)
-print(f"a2 shape: {a2.shape}")       
-print(f"a2 sum: {np.sum(a2):.4f}")  
-print(f"a2: {a2}")
+z1, a1, z2, a2, z3, a3 = forward1(x, W1, b1, W2, b2, W3, b3)
+print(f"a3 shape: {a3.shape}")       
+print(f"a3 sum: {np.sum(a3):.4f}")  
+print(f"a3: {a3}")
+
 print("Training on MNIST:")
-train_mnist(train_images, train_labels_oh, W1, b1, W2, b2, learning_rate=0.001, epochs=20, batch_size=32)
+np.random.seed(42)
+W1 = np.random.randn(128, 784) * np.sqrt(2.0 / 784)
+b1 = np.zeros(128)
+W2 = np.random.randn(64, 128) * np.sqrt(2.0 / 128)
+b2 = np.zeros(64)
+W3 = np.random.randn(10, 64) * np.sqrt(2.0 / 64)
+b3 = np.zeros(10)
+
+W1, b1, W2, b2, W3, b3 = train_mnist(
+    train_images, train_labels_oh,
+    W1, b1, W2, b2, W3, b3,
+    learning_rate=0.001,
+    epochs=20,
+    batch_size=32
+)
 
 print("Evaluating on test set:")
-train_acc = accuracy(train_images, train_labels_oh, W1, b1, W2, b2)
-test_acc  = accuracy(test_images, test_labels_oh, W1, b1, W2, b2)
+train_acc = accuracy(train_images, train_labels_oh, W1, b1, W2, b2, W3, b3)
+test_acc  = accuracy(test_images, test_labels_oh, W1, b1, W2, b2, W3, b3)
 print(f"Train accuracy: {train_acc:.4f}")
 print(f"Test accuracy:  {test_acc:.4f}")
