@@ -122,6 +122,20 @@ def train_mnist(train_images, train_labels_oh, W1, b1, W2, b2,W3, b3,
                 learning_rate=0.01, epochs=10, batch_size=32):
     
     n = len(train_images)
+    t=0
+
+    m_W1 = np.zeros_like(W1)
+    v_W1 = np.zeros_like(W1)
+    m_b1 = np.zeros_like(b1)
+    v_b1 = np.zeros_like(b1)
+    m_W2 = np.zeros_like(W2)
+    v_W2 = np.zeros_like(W2)
+    m_b2 = np.zeros_like(b2)
+    v_b2 = np.zeros_like(b2)
+    m_W3 = np.zeros_like(W3)
+    v_W3 = np.zeros_like(W3)
+    m_b3 = np.zeros_like(b3)
+    v_b3 = np.zeros_like(b3)
     
     for epoch in range(epochs):
 
@@ -142,7 +156,8 @@ def train_mnist(train_images, train_labels_oh, W1, b1, W2, b2,W3, b3,
             db2_total = np.zeros_like(b2)
             dW3_total = np.zeros_like(W3)
             db3_total = np.zeros_like(b3)
-            
+
+
             for j in range(len(X_batch)):
                 x = X_batch[j]
                 y = Y_batch[j]
@@ -156,7 +171,7 @@ def train_mnist(train_images, train_labels_oh, W1, b1, W2, b2,W3, b3,
                 dW1_total += dw1
                 db1_total += db1_grad
                 dW2_total += dw2
-                db2_total += db2_grad 
+                db2_total += db2_grad
                 dW3_total += dw3
                 db3_total += db3_grad
 
@@ -167,12 +182,39 @@ def train_mnist(train_images, train_labels_oh, W1, b1, W2, b2,W3, b3,
             dW3_total /= len(X_batch)
             db3_total /= len(X_batch)
 
-            W1 -= learning_rate * dW1_total
-            b1 -= learning_rate * db1_total
-            W2 -= learning_rate * dW2_total
-            b2 -= learning_rate * db2_total
-            W3 -= learning_rate * dW3_total
-            b3 -= learning_rate * db3_total
+            t += 1
+
+            m_W1= 0.9 * m_W1 + 0.1 * dW1_total
+            v_W1= 0.999 * v_W1 + 0.001 * (dW1_total ** 2)
+            m_W1_corr = m_W1 / (1 - 0.9**t)
+            v_W1_corr = v_W1 / (1 - 0.999**t)
+            m_b1= 0.9 * m_b1 + 0.1 * db1_total
+            v_b1= 0.999 * v_b1 + 0.001 * (db1_total ** 2)
+            m_b1_corr = m_b1 / (1 - 0.9**t)
+            v_b1_corr = v_b1 / (1 - 0.999**t)
+            m_W2= 0.9 * m_W2 + 0.1 * dW2_total
+            v_W2= 0.999 * v_W2 + 0.001 * (dW2_total ** 2)
+            m_W2_corr = m_W2 / (1 - 0.9**t)
+            v_W2_corr = v_W2 / (1 - 0.999**t)
+            m_b2= 0.9 * m_b2 + 0.1 *  db2_total
+            v_b2= 0.999 * v_b2 + 0.001 * (db2_total ** 2)
+            m_b2_corr = m_b2 / (1 - 0.9**t)
+            v_b2_corr = v_b2 / (1 - 0.999**t)
+            m_W3= 0.9 * m_W3 + 0.1 * dW3_total
+            v_W3= 0.999 * v_W3 + 0.001 * (dW3_total ** 2)
+            m_W3_corr = m_W3 / (1 - 0.9**t)
+            v_W3_corr = v_W3 / (1 - 0.999**t)
+            m_b3= 0.9 * m_b3 + 0.1 * db3_total
+            v_b3= 0.999 * v_b3 + 0.001 * (db3_total ** 2)
+            m_b3_corr = m_b3 / (1 - 0.9**t)
+            v_b3_corr = v_b3 / (1 - 0.999**t)
+
+            W1 -= learning_rate * m_W1_corr / (np.sqrt(v_W1_corr) + 1e-8)
+            b1 -= learning_rate * m_b1_corr / (np.sqrt(v_b1_corr) + 1e-8)
+            W2 -= learning_rate * m_W2_corr / (np.sqrt(v_W2_corr) + 1e-8)
+            b2 -= learning_rate * m_b2_corr / (np.sqrt(v_b2_corr) + 1e-8)
+            W3 -= learning_rate * m_W3_corr / (np.sqrt(v_W3_corr) + 1e-8)
+            b3 -= learning_rate * m_b3_corr / (np.sqrt(v_b3_corr) + 1e-8)
 
         epoch_loss /= n
         print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
