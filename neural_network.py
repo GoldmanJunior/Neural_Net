@@ -1,128 +1,113 @@
 import numpy as np
-from urllib import request
-import gzip
-import os
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
-def load_mnist():
-    base_url = "https://storage.googleapis.com/cvdf-datasets/mnist/"
-    files = {
-        "train_images": "train-images-idx3-ubyte.gz",
-        "train_labels": "train-labels-idx1-ubyte.gz",
-        "test_images":  "t10k-images-idx3-ubyte.gz",
-        "test_labels":  "t10k-labels-idx1-ubyte.gz"
-    }
+def rnn_step(x_t, h_prev, W_x, W_h, b):
+  return np.tanh(W_x @ x_t + W_h @ h_prev + b)
 
-    os.makedirs("data", exist_ok=True)
+def rnn_forward(inputs, h0, W_x, W_h, b):
+    seq_len = len(inputs)
+    hidden_size = len(h0)
+    
+    hidden_states = np.zeros((seq_len, hidden_size))
+    h_t = h0
+    
+    for t in range(seq_len):
+        h_t = rnn_step(inputs[t], h_t, W_x, W_h, b)
+        hidden_states[t] = h_t
+    
+    return hidden_states
 
-    for key, filename in files.items():
-        path = f"data/{filename}"
-        if not os.path.exists(path):
-            print(f"Downloading {filename}...")
-            request.urlretrieve(base_url + filename, path)
+def lstm_step(x_t, h_prev, c_prev, W_f, W_i, W_g, W_o, b_f, b_i, b_g, b_o):
+    
+    combined = np.concatenate([h_prev, x_t])
+    
 
-    # Charger images train
-    with gzip.open("data/train-images-idx3-ubyte.gz", "rb") as f:
-        train_images = np.frombuffer(f.read(), np.uint8, offset=16).reshape(-1, 784)
+    f_t = sigmoid(W_f @ combined + b_f)
+    i_t = sigmoid(W_i @ combined + b_i) 
+    g_t = np.tanh(W_g @ combined + b_g)
+    o_t = sigmoid(W_o @ combined + b_o)
+    
+    c_t = f_t * c_prev + i_t * g_t
+    h_t = o_t * np.tanh(c_t) 
+    
+    return h_t, c_t
 
-    # Charger labels train
-    with gzip.open("data/train-labels-idx1-ubyte.gz", "rb") as f:
-        train_labels = np.frombuffer(f.read(), np.uint8, offset=8)
+def lstm_forward(inputs, h0, c0, W_f, W_i, W_g, W_o, b_f, b_i, b_g, b_o):
+  seq_len = len(inputs)
+  hidden_size = len(h0)
+      
+  hidden_states = np.zeros((seq_len, hidden_size))
+  h_t = h0
+  c_t = c0
 
-    # Charger images test
-    with gzip.open("data/t10k-images-idx3-ubyte.gz", "rb") as f:
-        test_images = np.frombuffer(f.read(), np.uint8, offset=16).reshape(-1, 784)
+  for t in range(seq_len):
+        h_t, c_t = lstm_step(inputs[t], h_t, c_t, W_f, W_i, W_g, W_o, b_f, b_i, b_g, b_o)
+        hidden_states[t] = h_t
+      
+  return hidden_states
 
-    # Charger labels test
-    with gzip.open("data/t10k-labels-idx1-ubyte.gz", "rb") as f:
-        test_labels = np.frombuffer(f.read(), np.uint8, offset=8)
+if __name__ == "__main__":
 
-    return train_images, train_labels, test_images, test_labels
+  np.random.seed(0)
+  seq_len    = 5
+  input_size = 4
+  hidden_size = 3
 
-class MNISTNet(nn.Module):
-      def __init__(self):
-          super().__init__()
-          # 3 couches comme ton réseau from scratch
-          # 784 -> 128 -> 64 -> 10
-          self.layer1 = nn.Linear(784, 128)
-          self.layer2 = nn.Linear(128, 64)
-          self.layer3 = nn.Linear(64, 10)
-          self.relu   = nn.ReLU()
+  W_x = np.random.randn(hidden_size, input_size) * 0.1
+  W_h = np.random.randn(hidden_size, hidden_size) * 0.1
+  b   = np.zeros(hidden_size)
 
-      def forward(self, x):
-          # Couche 1
-          x = self.relu(self.layer1(x))
-          # Couche 2
-          x = self.relu(self.layer2(x))
-          # Couche 3
-          x = self.layer3(x)
-          return x
+  inputs = np.random.randn(seq_len, input_size)
+  h0     = np.zeros(hidden_size)
 
-model = MNISTNet()
-print(model)
+  hidden_states = rnn_forward(inputs, h0, W_x, W_h, b)
+  print(f"hidden_states shape: {hidden_states.shape}")  
+  
+h = np.array([1.0, 1.0, 1.0])
 
-  # Test avec un batch de 32 images
-x = torch.randn(32, 784)
-output = model(x)
-print(f"Output shape: {output.shape}")  # attendu : (32, 10)
+for t in range(100):
+    h = np.tanh(h * 0.99)
+print(h)
+np.random.seed(0)
+input_size  = 4
+hidden_size = 3
 
+W_f = np.random.randn(hidden_size, hidden_size + input_size) * 0.1
+W_i = np.random.randn(hidden_size, hidden_size + input_size) * 0.1
+W_g = np.random.randn(hidden_size, hidden_size + input_size) * 0.1
+W_o = np.random.randn(hidden_size, hidden_size + input_size) * 0.1
+b_f = np.zeros(hidden_size)
+b_i = np.zeros(hidden_size)
+b_g = np.zeros(hidden_size)
+b_o = np.zeros(hidden_size)
 
-train_images, train_labels, test_images, test_labels = load_mnist()
-train_images = train_images / 255.0
-test_images  = test_images / 255.0
+x_t    = np.array([1.0, 0.5, -0.3, 0.8])
+h_prev = np.zeros(hidden_size)
+c_prev = np.zeros(hidden_size)
 
-# Convertir les données NumPy en tenseurs PyTorch
-X_train = torch.tensor(train_images, dtype=torch.float32)
-Y_train = torch.tensor(train_labels, dtype=torch.long)
-X_test  = torch.tensor(test_images, dtype=torch.float32)
-Y_test  = torch.tensor(test_labels, dtype=torch.long)
+h_t, c_t = lstm_step(x_t, h_prev, c_prev, W_f, W_i, W_g, W_o, b_f, b_i, b_g, b_o)
+print(f"h_t shape: {h_t.shape}")  
+print(f"c_t shape: {c_t.shape}")   
+np.random.seed(0)
+seq_len     = 5
+input_size  = 4
+hidden_size = 3
 
-# Dataset et DataLoader - gère les batches automatiquement
-train_dataset = TensorDataset(X_train, Y_train)
-train_loader  = DataLoader(train_dataset, batch_size=32, shuffle=True)
+W_f = np.random.randn(hidden_size, hidden_size + input_size) * 0.1
+W_i = np.random.randn(hidden_size, hidden_size + input_size) * 0.1
+W_g = np.random.randn(hidden_size, hidden_size + input_size) * 0.1
+W_o = np.random.randn(hidden_size, hidden_size + input_size) * 0.1
+b_f = np.zeros(hidden_size)
+b_i = np.zeros(hidden_size)
+b_g = np.zeros(hidden_size)
+b_o = np.zeros(hidden_size)
 
-# Modèle, loss, optimizer
-model     = MNISTNet()
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+inputs = np.random.randn(seq_len, input_size)
+h0     = np.zeros(hidden_size)
+c0     = np.zeros(hidden_size)
 
-# Boucle d'entraînement
-for epoch in range(20):
-    epoch_loss = 0
-    for X_batch, Y_batch in train_loader:
-        # 1. Forward pass
-        output = model(X_batch)
-
-        # 2. Calcul de la loss
-        loss = criterion(output, Y_batch)
-
-        # 3. Reset des gradients
-        optimizer.zero_grad()
-
-        # 4. Backward pass
-        loss.backward()
-
-        # 5. Mise à jour des poids
-        optimizer.step()
-
-        epoch_loss += loss.item()
-
-    print(f"Epoch {epoch+1}/20, Loss: {epoch_loss/len(train_loader):.4f}")
-
-# Evaluation
-with torch.no_grad():
-    output = model(X_test)
-    pred   = torch.argmax(output, dim=1)
-    acc    = (pred == Y_test).float().mean()
-    print(f"Test accuracy: {acc:.4f}")
-
-'''
-Avant de lancer — fais le mapping avec ton code from scratch :
-
-optimizer.zero_grad()  ->  initialisation des gradients à zéro
-loss.backward()        ->  calcul du bakward (backpropagation)
-optimizer.step()       ->  mise à jour des poids
-'''
+hidden_states = lstm_forward(inputs, h0, c0, W_f, W_i, W_g, W_o, b_f, b_i, b_g, b_o)
+print(f"hidden_states shape: {hidden_states.shape}")
+print(hidden_states)
