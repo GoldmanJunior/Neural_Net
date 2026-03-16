@@ -48,6 +48,85 @@ def lstm_forward(inputs, h0, c0, W_f, W_i, W_g, W_o, b_f, b_i, b_g, b_o):
       
   return hidden_states
 
+import torch
+import torch.nn as nn
+
+lstm = nn.LSTM(input_size=4, hidden_size=3, batch_first=True)
+
+x  = torch.randn(1, 5, 4) 
+h0 = torch.zeros(1, 1, 3) 
+c0 = torch.zeros(1, 1, 3)
+
+output, (h_n, c_n) = lstm(x, (h0, c0))
+print(f"output shape: {output.shape}") 
+print(f"h_n shape:    {h_n.shape}")      
+print(f"c_n shape:    {c_n.shape}")  
+class LSTMClassifier(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        self.lstm   = nn.LSTM(input_size, hidden_size, batch_first=True)
+        self.linear = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        output, (h_n, c_n) = self.lstm(x)
+        last_hidden = h_n.squeeze(0)
+        out = self.linear(last_hidden)
+        return out
+model = LSTMClassifier(input_size=1, hidden_size=32, output_size=19)
+print(model)
+
+x = torch.randn(8, 2, 1)
+print(f"Output shape: {model(x).shape}") 
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+
+def generate_dataset(n_samples=10000):
+    X = []
+    Y = []
+    for _ in range(n_samples):
+        a = np.random.randint(0, 10)
+        b = np.random.randint(0, 10)
+        X.append([[a], [b]])     
+        Y.append(a + b)            
+    return np.array(X, dtype=np.float32), np.array(Y, dtype=np.int64)
+
+X, Y = generate_dataset(10000)
+X = torch.tensor(X)
+Y = torch.tensor(Y)
+
+X = X / 9.0
+
+
+X_train, X_test = X[:8000], X[8000:]
+Y_train, Y_test = Y[:8000], Y[8000:]
+
+
+train_dataset = TensorDataset(X_train, Y_train)
+train_loader  = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+
+model     = LSTMClassifier(input_size=1, hidden_size=64, output_size=19)
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+for epoch in range(50):
+    epoch_loss = 0
+    for X_batch, Y_batch in train_loader:
+        optimizer.zero_grad()
+        output = model(X_batch)
+        loss   = criterion(output, Y_batch)
+        loss.backward()
+        optimizer.step()
+        epoch_loss += loss.item()
+    print(f"Epoch {epoch+1}/50, Loss: {epoch_loss/len(train_loader):.4f}")
+
+with torch.no_grad():
+    output = model(X_test)
+    pred   = torch.argmax(output, dim=1)
+    acc    = (pred == Y_test).float().mean()
+    print(f"Test accuracy: {acc:.4f}")
+
 if __name__ == "__main__":
 
   np.random.seed(0)
